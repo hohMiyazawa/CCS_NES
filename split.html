@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>NES graphics</title>
+		<style>
+.canvasContainer{
+	display: inline-block;
+	padding: 5px;
+	margin: 5px;
+	border: solid;
+	border-width: 1px;
+	border-radius: 3px;
+	max-width: 40%;
+}
+canvas{
+	max-width: 100%;
+	max-height: 600px;
+	min-width: 16px;
+}
+body{
+	background: rgb(200,200,200);
+	padding: 20px;
+}
+		</style>
+	</head>
+	<body>
+		<div class="canvasContainer">
+			<h2>Original</h2>
+			<canvas id="preview" width="0" height="0"></canvas>
+		</div><br>
+		<hr>
+		<p id="rangecost"></p>
+		<hr>
+		<h3>Analyse</h3>
+		<input type="file" id="imageInput"><br>
+		<button id="encodeButton">Analyse</button>
+		<pre id="nametable"></pre>
+		<p id="chrtable"></p>
+		<div id="drawer"></div>
+		<p id="text"></p>
+		<script>
+let saveByteArray = (function(){
+	let a = document.createElement("a");
+	document.body.appendChild(a);
+	a.style = "display: none";
+	return function(data,name){
+		let blob = new Blob(data, {type: "octet/stream"});
+		let url = window.URL.createObjectURL(blob);
+		a.href = url;
+		a.download = name;
+		a.click();
+		window.URL.revokeObjectURL(url)
+	}
+}())
+
+
+const inputElementEncode = document.getElementById("imageInput");
+const buttonElementEncode = document.getElementById("encodeButton");
+
+let colours = {
+	"82,99,214": 1,
+	"207,175,150": 2
+}
+
+let arbidata = null;
+
+let html_encode = function(){
+	if(inputElementEncode.files && inputElementEncode.files[0]){
+		let fileName = inputElementEncode.files[0].name;
+		let FR = new FileReader();
+		FR.onload = function(e){
+			let img = new Image();
+			img.addEventListener("load", function(){
+				let canvas = document.getElementById("preview");
+				canvas.height = img.height;
+				canvas.width = img.width;
+				let ctx = canvas.getContext("2d");
+				ctx.drawImage(img, 0, 0);
+				let contextData = ctx.getImageData(0,0,img.width,img.height).data;
+				arbidata = contextData;
+				console.log(contextData);
+
+				let nametable = [];
+				let chrtable = [];
+
+				for(let row = 0;row < 30;row++){
+					for(let i=0;i<32;i++){
+						let found = -1;
+						for(let smoff = 0;smoff < chrtable.length;smoff++){
+							let lokfound = false
+							for(let y=0;y<8;y++){
+								for(let x=0;x<8;x++){
+let pos = ((row*8 + y)*256 + i*8 + x)*4;
+let kulor = colours[contextData[pos] + "," + contextData[pos+1] + "," + contextData[pos+2]] || 0;
+if(kulor !== chrtable[smoff][y*8 + x]){
+	lokfound = true
+}
+								}
+							}
+							if(!lokfound){
+								found = smoff;
+								break;
+							}
+						}
+						if(found === -1){
+							if(chrtable.length < 255){
+								nametable.push(chrtable.length);
+								let arr = [];
+								for(let y=0;y<8;y++){
+									for(let x=0;x<8;x++){
+let pos = ((row*8 + y)*256 + i*8 + x)*4;
+let kulor = colours[contextData[pos] + "," + contextData[pos+1] + "," + contextData[pos+2]] || 0;
+arr.push(kulor)
+									}
+								}
+								chrtable.push(arr);
+								//alert(row + "," + i + "," + "|" + arr);
+							}
+							else{
+								nametable.push(0);
+								alert("aaaa")
+							}
+						}
+						else{
+							nametable.push(found)
+						}
+					}
+				}
+
+				let lines = [];
+let b_i,b_j,temparray,chunk = 32;
+for (b_i=0,b_j=nametable.length; b_i<b_j; b_i+=chunk) {
+	temparray = nametable.slice(b_i,b_i+chunk);
+	lines.push(temparray);
+}
+
+				document.getElementById("nametable").innerText = lines.map(line => {
+	return "  .db " + line.map(ele => "$" + ("0" + (ele).toString(16)).slice(-2)).join(",")
+}).join("\n");
+				while(chrtable.length < 256){
+					chrtable.push(new Array(64).fill(0))
+				}
+				document.getElementById("chrtable").innerText = chrtable.map(box => {
+					let string = "";
+					for(let row = 0;row < 8;row++){
+						string += ("0" + (
+	(!!(box[row*8] === 2))*128 + (!!(box[row*8+1] === 2))*64 + (!!(box[row*8+2] === 2))*32+ (!!(box[row*8+3] === 2))*16+ (!!(box[row*8+4] === 2))*8+(!!(box[row*8+5] === 2))*4+ (!!(box[row*8+6] === 2))*2+ (!!(box[row*8+7] === 2))
+).toString(16)).slice(-2);
+					}
+					for(let row = 0;row < 8;row++){
+						string += ("0" + (
+	(!!box[row*8])*128 + (!!box[row*8+1])*64 + (!!box[row*8+2])*32+ (!!box[row*8+3])*16+ (!!box[row*8+4])*8+(!!box[row*8+5])*4+ (!!box[row*8+6])*2+ (!!box[row*8+7])
+).toString(16)).slice(-2);
+					}
+					return string
+				}).join("") + new Array(4096).fill("00").join("");
+				console.log(chrtable);
+			});
+			img.src = e.target.result;
+		};       
+		FR.readAsDataURL(inputElementEncode.files[0]);
+	}
+}
+inputElementEncode.addEventListener("change",html_encode,false);
+buttonElementEncode.addEventListener("click",html_encode,false);
+
+let drawer = document.getElementById("drawer");
+
+let palette = ["black","white","cyan","blue"];
+//let palette = ["black","yellow","cyan","brown"];
+//
+//let palette = ["black","yellow","pink","brown"];
+
+let graphics = new Array(64).fill(0);
+
+let textify = function(graphics){
+	let lines = [];
+	let b_i,b_j,temparray,chunk = 8;
+	for (b_i=0,b_j=graphics.length; b_i<b_j; b_i+=chunk) {
+		temparray = graphics.slice(b_i,b_i+chunk);
+		lines.push(temparray);
+	}
+	document.getElementById("text").innerText = lines.map(line => line.map(num => num % 2)).map(line => (line[0]<<7) + (line[1]<<6) + (line[2]<<5) + (line[3]<<4) + (line[4]<<3) + (line[5]<<2) + (line[6]<<1) + (line[7])).map(num => ("0" + num.toString(16)).slice(-2)).join(" ") + "\n" + lines.map(line => line.map(num => (num > 1) + 0)).map(line => (line[0]<<7) + (line[1]<<6) + (line[2]<<5) + (line[3]<<4) + (line[4]<<3) + (line[5]<<2) + (line[6]<<1) + (line[7])).map(num => ("0" + num.toString(16)).slice(-2)).join(" ");
+}
+
+let teikn = 0;
+
+		let elem1 = document.createElement("span");
+		elem1.style.width = "40px";
+		elem1.style.height = "40px";
+		elem1.style.marginRight = "4px";
+		elem1.style.backgroundColor = palette[0];
+		elem1.style.display = "block";
+		drawer.appendChild(elem1);
+		elem1.onclick = function(){
+			teikn = 0;
+		}
+		let elem2 = document.createElement("span");
+		elem2.style.width = "40px";
+		elem2.style.height = "40px";
+		elem2.style.marginRight = "4px";
+		elem2.style.backgroundColor = palette[1];
+		elem2.style.display = "block";
+		drawer.appendChild(elem2);
+		elem2.onclick = function(){
+			teikn = 1;
+		}
+		let elem3 = document.createElement("span");
+		elem3.style.width = "40px";
+		elem3.style.height = "40px";
+		elem3.style.marginRight = "4px";
+		elem3.style.backgroundColor = palette[2];
+		elem3.style.display = "block";
+		drawer.appendChild(elem3);
+		elem3.onclick = function(){
+			teikn = 2;
+		}
+		let elem4 = document.createElement("span");
+		elem4.style.width = "40px";
+		elem4.style.height = "40px";
+		elem4.style.marginRight = "4px";
+		elem4.style.backgroundColor = palette[3];
+		elem4.style.display = "block";
+		drawer.appendChild(elem4);
+		elem4.onclick = function(){
+			teikn = 3;
+		}
+
+for(let i=0;i<8;i++){
+	for(let j=0;j<8;j++){
+		let elem = document.createElement("span");
+		elem.style.width = "40px";
+		elem.style.height = "40px";
+		elem.style.marginRight = "4px";
+		elem.style.backgroundColor = "black";
+		elem.style.display = "inline-block";
+		let pos = i*8+j;
+		elem.onclick = function(){
+			graphics[pos] = teikn;
+			elem.style.backgroundColor = palette[graphics[pos]];
+			textify(graphics);
+		}
+		drawer.appendChild(elem);
+	}
+	let elem = document.createElement("br");
+	drawer.appendChild(elem);
+}
+
+let fet = function(x,y){
+	let lines = [];
+	for(let i=0;i<8;i++){
+		let or = [];
+		for(let j=0;j<8;j++){
+			let pos = ((y*8+i)*256 + x*8 + j)*4;
+			or.push([arbidata[pos],arbidata[pos + 1],arbidata[pos + 2]])
+		}
+		lines.push(or);
+	}
+
+	return lines
+}
+
+let p1 = [[0,0,0],[198,185,213],[82,99,214],[77,0,220]];
+let p2 = [[0,0,0],[207, 175, 150],[82,99,214],[85, 56, 43]];
+let p3 = [[0,0,0],[198,185,213],[82,99,214],[85, 56, 43]];
+let p4 = [[0,0,0],[207, 175, 150],[217, 0, 62],[85, 56, 43]];
+
+let fortolk = function(lines,pal){
+	return lines.map(
+		line => line.map(
+			val => {
+				if(
+					val[0] === pal[0][0]
+					&& val[1] === pal[0][1]
+					&& val[2] === pal[0][2]
+				){
+					return 0
+				}
+				if(
+					val[0] === pal[1][0]
+					&& val[1] === pal[1][1]
+					&& val[2] === pal[1][2]
+				){
+					return 1
+				}
+				if(
+					val[0] === pal[2][0]
+					&& val[1] === pal[2][1]
+					&& val[2] === pal[2][2]
+				){
+					return 2
+				}
+				return 3
+			}
+		)
+	).flat();
+}
+
+		</script>
+	</body>
+</html>

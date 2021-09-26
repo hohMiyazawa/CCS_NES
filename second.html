@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>NES graphics</title>
+		<style>
+.canvasContainer{
+	display: inline-block;
+	padding: 5px;
+	margin: 5px;
+	border: solid;
+	border-width: 1px;
+	border-radius: 3px;
+	max-width: 40%;
+}
+canvas{
+	max-width: 100%;
+	max-height: 600px;
+	min-width: 16px;
+}
+body{
+	background: rgb(200,200,200);
+	padding: 20px;
+}
+		</style>
+	</head>
+	<body>
+		<div class="canvasContainer">
+			<h2>Original</h2>
+			<canvas id="preview" width="0" height="0"></canvas>
+		</div><br>
+		<hr>
+		<p id="rangecost"></p>
+		<hr>
+		<h3>Analyse</h3>
+		<input type="file" id="imageInput"><br>
+		<button id="encodeButton">Analyse</button>
+		<pre id="nametable"></pre>
+		<pre id="nametable2"></pre>
+		<p id="chrtable"></p>
+		<p id="text"></p>
+		<script>
+let saveByteArray = (function(){
+	let a = document.createElement("a");
+	document.body.appendChild(a);
+	a.style = "display: none";
+	return function(data,name){
+		let blob = new Blob(data, {type: "octet/stream"});
+		let url = window.URL.createObjectURL(blob);
+		a.href = url;
+		a.download = name;
+		a.click();
+		window.URL.revokeObjectURL(url)
+	}
+}())
+
+
+const inputElementEncode = document.getElementById("imageInput");
+const buttonElementEncode = document.getElementById("encodeButton");
+
+let html_encode = function(){
+	if(inputElementEncode.files && inputElementEncode.files[0]){
+		let fileName = inputElementEncode.files[0].name;
+		let FR = new FileReader();
+		FR.onload = function(e){
+			let img = new Image();
+			img.addEventListener("load", function(){
+				let canvas = document.getElementById("preview");
+				canvas.height = img.height;
+				canvas.width = img.width;
+				let ctx = canvas.getContext("2d");
+				ctx.drawImage(img, 0, 0);
+				let contextData = ctx.getImageData(0,0,img.width,img.height).data;
+				chrify(contextData);
+			});
+			img.src = e.target.result;
+		};       
+		FR.readAsDataURL(inputElementEncode.files[0]);
+	}
+}
+inputElementEncode.addEventListener("change",html_encode,false);
+buttonElementEncode.addEventListener("click",html_encode,false);
+
+/*
+
+let palli = {
+	"119,119,119": 0,
+	"241,211,168": 1,
+	"82,54,0": 2,
+	"0,0,0": 3
+}
+
+*/
+/*
+let palli = {
+	"82,54,0": 0,
+	"249,196,0": 1,
+	"215,215,215": 2,
+	"0,0,0": 3
+}
+*/
+
+/*
+let palli = {
+	"0,0,0": 0,
+	"234,86,0": 1,
+	"0,99,10": 2,
+	"172,132,0": 3
+}
+
+*/
+
+let palli = {
+	"0,0,0": 0,
+	"188,188,188": 1,
+	"120,120,120": 2,
+	"256,256,256": 3
+}
+let textify = function(graphics){
+	let lines = [];
+	let b_i,b_j,temparray,chunk = 8;
+	for (b_i=0,b_j=graphics.length; b_i<b_j; b_i+=chunk) {
+		temparray = graphics.slice(b_i,b_i+chunk);
+		lines.push(temparray);
+	}
+	return lines.map(line => line.map(num => num % 2)).map(line => (line[0]<<7) + (line[1]<<6) + (line[2]<<5) + (line[3]<<4) + (line[4]<<3) + (line[5]<<2) + (line[6]<<1) + (line[7])).map(num => ("0" + num.toString(16)).slice(-2)).join(" ") + "\n" + lines.map(line => line.map(num => (num > 1) + 0)).map(line => (line[0]<<7) + (line[1]<<6) + (line[2]<<5) + (line[3]<<4) + (line[4]<<3) + (line[5]<<2) + (line[6]<<1) + (line[7])).map(num => ("0" + num.toString(16)).slice(-2)).join(" ");
+}
+
+let chrify = function(contextData){
+	let colours = [];
+	for(let i=0;i<contextData.length;i+=4){
+		let index = colours.findIndex(col => 
+			col[0] === contextData[i]
+			&& col[1] === contextData[i+1]
+			&& col[2] === contextData[i+2]
+		)
+		if(index === -1){
+			colours.push([contextData[i],contextData[i+1],contextData[i+2]])
+		}
+	}
+	console.log(colours);
+	let nametable = [];
+	let graphics = [];
+	for(let row = 0;row < 240;row+=8){
+		for(let col=0;col<256;col+=8){
+			let graphic = [];
+			for(let y=0;y<8;y++){
+				for(let x=0;x<8;x++){
+let pos = ((row+y)*256 + col + x)*4;
+let c1 = contextData[pos];
+let c2 = contextData[pos+1];
+let c3 = contextData[pos+2];
+graphic.push(palli[c1 + "," + c2 + "," + c3]);
+				}
+			}
+			let found = false;
+			for(let i=0;i<graphics.length;i++){
+				if(graphic.every((ele,index) => ele === graphics[i][index])){
+					found = true;
+					nametable.push(i);
+					break;
+				}
+			}
+			if(!found){
+				nametable.push(graphics.length);
+				graphics.push(graphic);
+			}
+		}
+	}
+	console.log(nametable);
+	console.log(graphics);
+
+	let lines = [];
+	let b_i,b_j,temparray,chunk = 32;
+	for (b_i=0,b_j=nametable.length; b_i<b_j; b_i+=chunk) {
+		temparray = nametable.slice(b_i,b_i+chunk);
+		lines.push(temparray);
+	}
+
+	document.getElementById("nametable").innerText = lines.map(line => {
+		return "  .db " + line.map(ele => Math.min(ele,255)).map(ele => "$" + ("0" + (ele).toString(16)).slice(-2)).join(",")
+	}).join("\n");
+/*
+	nametable = [];
+
+	for(let row = 0;row < 240;row+=8){
+		for(let col=0;col<256;col+=8){
+			let graphic = [];
+			for(let y=0;y<8;y++){
+				for(let x=0;x<8;x++){
+let pos = ((row+y)*512 + col + x + 256)*4;
+let c1 = contextData[pos];
+let c2 = contextData[pos+1];
+let c3 = contextData[pos+2];
+graphic.push(palli[c1 + "," + c2 + "," + c3]);
+				}
+			}
+			let found = false;
+			for(let i=0;i<graphics.length;i++){
+				if(graphic.every((ele,index) => ele === graphics[i][index])){
+					found = true;
+					nametable.push(i);
+					break;
+				}
+			}
+			if(!found){
+				nametable.push(graphics.length);
+				graphics.push(graphic);
+			}
+		}
+	}
+
+	lines = [];
+	temparray,chunk = 32;
+	for (b_i=0,b_j=nametable.length; b_i<b_j; b_i+=chunk) {
+		temparray = nametable.slice(b_i,b_i+chunk);
+		lines.push(temparray);
+	}
+
+	document.getElementById("nametable2").innerText = lines.map(line => {
+		return "  .db " + line.map(ele => Math.min(ele,255)).map(ele => "$" + ("0" + (ele).toString(16)).slice(-2)).join(",")
+	}).join("\n");
+*/
+	graphics.slice(0,256).forEach(graph => {
+		document.getElementById("chrtable").innerText += textify(graph) + "\n"
+	})
+
+	for(let i=0;i<graphics.length;i++){
+		for(let j=0;j<i;j++){
+			let errors = 0;
+			for(let index = 0;index<64;index++){
+				if(graphics[i][index] !== graphics[j][index]){
+					errors++;
+				}
+			}
+			if(errors < 3){
+				console.log(i,j);
+			}
+		}
+	}
+
+}
+		</script>
+	</body>
+</html>
